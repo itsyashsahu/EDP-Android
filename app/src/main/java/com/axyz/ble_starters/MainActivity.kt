@@ -48,16 +48,9 @@ class MainActivity : AppCompatActivity() {
         Manifest.permission.BLUETOOTH_ADVERTISE
     )
     var askedForPermssions = false
-//    private var bluetoothService: BluetoothService? = null
-//    private var bluetoothService: BluetoothService? = BluetoothService(this,this)
-
-
-    // Set up the list view to display the BLE devices
-//    val listAdapter = ArrayAdapter<String>(this, android.R.layout.simple_list_item_1)
-//    listView.adapter = listAdapter
-
 
     lateinit var listAdapter:ArrayAdapter<String>
+//    var bleDevices = mutableSetOf<String>("Really a Device")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,30 +58,36 @@ class MainActivity : AppCompatActivity() {
 
 // Find the ListView object in the layout file
         val listView = findViewById<ListView>(R.id.list_view)
-
         // Create the list adapter
         listAdapter = ArrayAdapter<String>(this, R.layout.list_item, R.id.text_view)
 
-        // Set the list adapter as the adapter for the ListView
+//         Set the list adapter as the adapter for the ListView
         listView.adapter = listAdapter
+        listAdapter.add("Heelasd")
 
-        // Add items to the list adapter
-//        listAdapter.add("Item 1")
-//        listAdapter.add("Item 2")
-//        listAdapter.add("Item 3")
-
-        // Set an OnItemClickListener for the ListView
+//         Set an OnItemClickListener for the ListView
         listView.onItemClickListener = AdapterView.OnItemClickListener { parent, view, position, id ->
             // Do something when an item is clicked
         }
 
+//        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, bleDevices.toList())
+        val adapter = ArrayAdapter<String>(this, R.id.list_view, R.id.textView)
 
-
+//        val deviceListView
+        listView.adapter = adapter
 
         var checkButton = findViewById<Button>(R.id.start_button)
         checkButton.setOnClickListener {
 //            showDialougeIfPermissionsNotGiven()
             listAdapter.add("new Element")
+//            bleDevices.add("Naya Device")
+            adapter.notifyDataSetChanged()
+//            listView.deferNotifyDataSetChanged()
+//            adapter.notifyDataSetChanged()
+//            listView.adapter=adapter
+
+
+            println("After Adding Naya Device $listAdapter")
         }
 
         requestPermissions(*permissions)
@@ -152,10 +151,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Start scanning for BLE devices
+//        bluetoothAdapter.startDiscovery()
         bluetoothAdapter.startLeScan { device: BluetoothDevice, rssi: Int, scanRecord: ByteArray ->
             // Add the BLE device to the list
             println("Device -> "+device)
             listAdapter.add(device.name ?: device.address)
+//            bleDevices.add(device.toString())
         }
     }
 
@@ -173,6 +174,7 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+//    Below two functions help to advertise a custom characteristic and service with their own uuid
     private fun startBluetoothServiceTry(bluetoothLeAdvertiser: BluetoothLeAdvertiser){
 
         // Create a characteristic with some data

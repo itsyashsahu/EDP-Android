@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layout xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <data>
+        <variable
+            name="listAdapter"
+            type="android.widget.ArrayAdapter"/>
+        <variable
+            name="listAdapter"
+            type="android.widget.ArrayAdapter" />
+    </data>
+    <!--        android:adapter="@={listAdapter}"-->
+
+    <ListView
+        android:id="@+id/list_view"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:divider="@android:color/darker_gray"
+        android:dividerHeight="1dp"
+        android:listSelector="@android:color/holo_orange_light"/>
+
+</layout>

@@ -33,6 +33,10 @@ android {
     packagingOptions {
         resources.excludes.add("META-INF/*")
     }
+    buildFeatures{
+        viewBinding true
+        dataBinding true
+    }
 }
 
 dependencies {

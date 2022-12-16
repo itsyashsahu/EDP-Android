@@ -57,7 +57,7 @@ class MainActivity : AppCompatActivity() {
 //    listView.adapter = listAdapter
 
 
-
+    lateinit var listAdapter:ArrayAdapter<String>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -67,15 +67,15 @@ class MainActivity : AppCompatActivity() {
         val listView = findViewById<ListView>(R.id.list_view)
 
         // Create the list adapter
-        val listAdapter = ArrayAdapter<String>(this, R.layout.list_item, R.id.text_view)
+        listAdapter = ArrayAdapter<String>(this, R.layout.list_item, R.id.text_view)
 
         // Set the list adapter as the adapter for the ListView
         listView.adapter = listAdapter
 
         // Add items to the list adapter
-        listAdapter.add("Item 1")
-        listAdapter.add("Item 2")
-        listAdapter.add("Item 3")
+//        listAdapter.add("Item 1")
+//        listAdapter.add("Item 2")
+//        listAdapter.add("Item 3")
 
         // Set an OnItemClickListener for the ListView
         listView.onItemClickListener = AdapterView.OnItemClickListener { parent, view, position, id ->
@@ -87,7 +87,8 @@ class MainActivity : AppCompatActivity() {
 
         var checkButton = findViewById<Button>(R.id.start_button)
         checkButton.setOnClickListener {
-            showDialougeIfPermissionsNotGiven()
+//            showDialougeIfPermissionsNotGiven()
+            listAdapter.add("new Element")
         }
 
         requestPermissions(*permissions)
@@ -154,7 +155,7 @@ class MainActivity : AppCompatActivity() {
         bluetoothAdapter.startLeScan { device: BluetoothDevice, rssi: Int, scanRecord: ByteArray ->
             // Add the BLE device to the list
             println("Device -> "+device)
-//            listAdapter.add(device.name ?: device.address)
+            listAdapter.add(device.name ?: device.address)
         }
     }
 

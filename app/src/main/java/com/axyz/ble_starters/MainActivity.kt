@@ -1,25 +1,17 @@
 package com.axyz.ble_starters
 
 import android.Manifest
-import android.Manifest.permission.CAMERA
-import android.Manifest.permission.WRITE_EXTERNAL_STORAGE
 import android.bluetooth.*
+import android.bluetooth.le.*
 import android.content.*
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
-import android.os.IBinder
-import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.afollestad.assent.Permission
-import com.afollestad.assent.askForPermissions
-import com.afollestad.assent.isAllGranted
-import com.afollestad.assent.runWithPermissions
 import com.karumi.dexter.Dexter
 import com.karumi.dexter.MultiplePermissionsReport
 import com.karumi.dexter.PermissionToken
@@ -27,20 +19,18 @@ import com.karumi.dexter.listener.multi.MultiplePermissionsListener
 //import com.github.hotchemi.permissionsdispatcher.PermissionRequest
 //import com.permissionx.guolindev.PermissionX
 import permissions.dispatcher.*
-import com.axyz.ble_starters.BluetoothService
 
 
-import android.bluetooth.le.AdvertiseCallback
-import android.bluetooth.le.AdvertiseData
-import android.bluetooth.le.AdvertiseSettings
-import android.bluetooth.le.BluetoothLeAdvertiser
 import android.os.ParcelUuid
+import android.util.SparseArray
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import androidx.core.util.isNotEmpty
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import java.nio.charset.StandardCharsets
 import java.util.*
 
 @RuntimePermissions
@@ -57,87 +47,58 @@ class MainActivity : AppCompatActivity() {
 //    private var bluetoothService: BluetoothService? = BluetoothService(this,this)
 
 
-    // Set up the list view to display the BLE devices
-//    val listAdapter = ArrayAdapter<String>(this, android.R.layout.simple_list_item_1)
-//    listView.adapter = listAdapter
+    class DiscoveredBluetoothDevice(val device: BluetoothDevice, val serviceUuids: List<ParcelUuid>)
 
-
-    lateinit var listAdapter:ArrayAdapter<String>
-    val deviceSet = mutableSetOf<BluetoothDevice>()
+    val deviceSet = mutableListOf<DiscoveredBluetoothDevice>()
+    lateinit var adapter:DeviceAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-// Find the ListView object in the layout file
-        val listView = findViewById<ListView>(R.id.list_view)
-
-        // Create the list adapter
-        listAdapter = ArrayAdapter<String>(this, R.layout.list_item, R.id.text_view)
-
-        // Set the list adapter as the adapter for the ListView
-        listView.adapter = listAdapter
-
-
-
-        // Add items to the list adapter
-//        listAdapter.add("Item 1")
-//        listAdapter.add("Item 2")
-//        listAdapter.add("Item 3")
-
-        // Set an OnItemClickListener for the ListView
-        listView.onItemClickListener = AdapterView.OnItemClickListener { parent, view, position, id ->
-            // Do something when an item is clicked
-        }
-
-
+        // Add the Recycler View to keep the list Updated on the screen
         val recyclerView = findViewById<RecyclerView>(R.id.recycler_view)
         val layoutManager = LinearLayoutManager(this)
         recyclerView.layoutManager = layoutManager
-        val adapter = DeviceAdapter(deviceSet)
+        adapter = DeviceAdapter(deviceSet)
         recyclerView.adapter = adapter
-
-
 
 
 
         var checkButton = findViewById<Button>(R.id.start_button)
         checkButton.setOnClickListener {
-//            showDialougeIfPermissionsNotGiven()
-            listAdapter.add("new Element")
+            scan()
+
         }
 
         requestPermissions(*permissions)
 
         val startBroadcastingButton = findViewById<Button>(R.id.start_broadcasting_button)
         startBroadcastingButton.setOnClickListener {
-//            startBluetoothService()
-//            startBroadCasting()
-            // Get the default Bluetooth adapter
-//            val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
-//
-//            // Check if Bluetooth is supported on the device
-//            if (bluetoothAdapter == null) {
-//                Log.e("Bluetooth", "Bluetooth is not supported on this device")
-//                return@setOnClickListener
-//            }
-//
-//            // Check if Bluetooth is enabled
-//            if (!bluetoothAdapter.isEnabled()) {
-//                Log.i("Bluetooth", "Bluetooth is not enabled, enabling now...")
-//                bluetoothAdapter.enable()
-//            }
+            val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
 
-            // Get the BluetoothLeAdvertiser
-//            val bluetoothLeAdvertiser = bluetoothAdapter.bluetoothLeAdvertiser
-//
-//            // Check if Bluetooth LE advertising is supported on the device
-//            if (bluetoothLeAdvertiser == null) {
-//                Log.e("Bluetooth", "Bluetooth LE advertising is not supported on this device")
-//                return@setOnClickListener
-//            }
-//            startBluetoothServiceTry(bluetoothLeAdvertiser)
-            scan()
+            // Check if Bluetooth is supported on the device
+            if (bluetoothAdapter == null) {
+                Log.e("Bluetooth", "Bluetooth is not supported on this device")
+                return@setOnClickListener
+            }
+
+            // Check if Bluetooth is enabled
+            if (!bluetoothAdapter.isEnabled()) {
+                Log.i("Bluetooth", "Bluetooth is not enabled, enabling now...")
+                bluetoothAdapter.enable()
+            }
+
+//             Get the BluetoothLeAdvertiser
+            val bluetoothLeAdvertiser = bluetoothAdapter.bluetoothLeAdvertiser
+
+            // Check if Bluetooth LE advertising is supported on the device
+            if (bluetoothLeAdvertiser == null) {
+                Log.e("Bluetooth", "Bluetooth LE advertising is not supported on this device")
+                return@setOnClickListener
+            }
+            startBluetoothServiceTry(bluetoothLeAdvertiser)
+
         }
 
     }
@@ -146,7 +107,7 @@ class MainActivity : AppCompatActivity() {
         val textView: TextView = itemView.findViewById(R.id.text_view)
     }
 
-    class DeviceAdapter(private val devices: Set<BluetoothDevice>) : RecyclerView.Adapter<DeviceViewHolder>() {
+    class DeviceAdapter(private val devices: MutableList<DiscoveredBluetoothDevice>) : RecyclerView.Adapter<DeviceViewHolder>() {
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): DeviceViewHolder {
             val view = LayoutInflater.from(parent.context).inflate(R.layout.item_device, parent, false)
@@ -154,8 +115,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun onBindViewHolder(holder: DeviceViewHolder, position: Int) {
-            val device = devices.elementAt(position)
-            holder.textView.text = device.name ?: device.address
+            val descoveredDevice = devices.elementAt(position)
+            holder.textView.text = "${descoveredDevice.device.name ?: descoveredDevice.device.address} -- ${descoveredDevice.serviceUuids}"
+            holder.textView.setOnClickListener(){
+                println("Item on click listner")
+            }
         }
 
         override fun getItemCount(): Int {
@@ -189,14 +153,120 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        val bluetoothLeScanner = bluetoothAdapter.bluetoothLeScanner
+        val scanSettings = ScanSettings.Builder().build()
+        val scanFilter = ScanFilter.Builder().build()
+        // List to store the scan results
+        val scanResultList: MutableList<ScanResult> = mutableListOf()
 
-        // Start scanning for BLE devices
-        bluetoothAdapter.startLeScan { device: BluetoothDevice, rssi: Int, scanRecord: ByteArray ->
-            // Add the BLE device to the list
-            println("Device -> "+device+" with rssi : "+rssi+" ScanRecord : "+scanRecord)
-            listAdapter.add(device.name ?: device.address)
-            deviceSet.add(device)
+        val scanCallback = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+                // Add the scan result to the list
+                scanResultList.add(result)
+
+                // Get the ScanRecord object from the ScanResult
+                val scanRecord: ScanRecord? = result.getScanRecord()
+//                val scanRecord: ScanRecord = ...
+
+                val device: BluetoothDevice = result.device
+                // Check if the device is already in the list
+//                if (deviceSet.contains(device)) {
+                if (deviceSet.any { it.device == device }) {
+                    // Device is already in the list, do nothing
+                } else {
+                    // Print the service UUIDs
+//                val serviceUuids: List<ParcelUuid> = scanRecord?.getServiceUuids() as List<ParcelUuid>
+                    val serviceUuids: List<ParcelUuid> = scanRecord?.getServiceUuids() ?: emptyList()
+                    if (serviceUuids.isNotEmpty()) {
+                        println("Service UUIDs: $serviceUuids")
+                    } else {
+                        println("No service UUIDs available")
+                    }
+                    // Device is new, add it to the list
+                    deviceSet.add(DiscoveredBluetoothDevice(device, serviceUuids))
+                    println("Device Added ------------> $device")
+
+// Print the device name
+                    val deviceName: String? = scanRecord?.getDeviceName()
+                    if (deviceName != null) {
+                        println("Device name: $deviceName")
+                    } else {
+                        println("Device name not available")
+                    }
+
+
+
+                    // Print the manufacturer data
+                    val manufacturerData: SparseArray<ByteArray>? = scanRecord?.getManufacturerSpecificData()
+                    if (manufacturerData != null) {
+                        if (manufacturerData.isNotEmpty()) {
+                            for (i in 0 until manufacturerData.size()) {
+                                val manufacturerId = manufacturerData.keyAt(i)
+                                val data = manufacturerData.valueAt(i)
+                                println("Manufacturer ID: $manufacturerId, Data: ${String(data, StandardCharsets.UTF_8)}")
+                            }
+                        } else {
+                            println("No manufacturer data available")
+                        }
+                    }
+
+// Print the service data
+                    val serviceData: Map<ParcelUuid, ByteArray>? = scanRecord?.getServiceData()
+                    if (serviceData != null) {
+                        println("Service data: $serviceData")
+                    } else {
+                        println("Service data not available")
+                    }
+
+// Print the Tx power level
+                    val txPowerLevel: Int? = scanRecord?.getTxPowerLevel()
+                    if (txPowerLevel != null) {
+                        println("Tx power level: $txPowerLevel")
+                    } else {
+                        println("Tx power level not available")
+                    }
+
+//// Print the scan response data
+//                    val scanResponse: ByteArray? = scanRecord?.get
+//                    if (scanResponse != null) {
+//                        println("Scan response data: ${Hex.encodeHexString(scanResponse)}")
+//                    } else {
+//                        println("Scan response data not available")
+//                    }
+
+                    adapter.notifyDataSetChanged()
+                }
+            }
         }
+
+
+        bluetoothLeScanner.startScan(listOf(scanFilter), scanSettings, scanCallback)
+
+        // To detect that a device is no longer available, you can periodically check the list of detected
+        // devices and remove any devices that are no longer detected in the scan
+//        val handler = Handler()
+//        val runnable = object : Runnable {
+//            override fun run() {
+//                // Iterate over the list of detected devices
+////                println("Handler Running"+deviceSet)
+//                for (device in deviceSet) {
+//                    // Check if the device is still being detected in the scan
+//                    if (!scanResultList.any { it.device == device }) {
+//                        // Device is no longer being detected, remove it from the list
+//                        deviceSet.remove(device)
+//                        adapter.notifyDataSetChanged()
+//                        println("Device Removed -> "+device)
+//                    }
+//                }
+//
+//                // Repeat the check after a certain interval
+//                handler.postDelayed(this, 1000)
+//            }
+//        }
+//
+//        // Start the periodic check
+//        handler.post(runnable)
+
     }
 
     //Modifinng the Raw Advertisement data
@@ -214,6 +284,7 @@ class MainActivity : AppCompatActivity() {
 
     
     private fun startBluetoothServiceTry(bluetoothLeAdvertiser: BluetoothLeAdvertiser){
+
 
         // Create a characteristic with some data
         val characteristic = BluetoothGattCharacteristic(

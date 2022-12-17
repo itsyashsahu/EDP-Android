@@ -50,6 +50,7 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.4.0'
     implementation 'com.github.LeandroSQ:android-ble-made-easy:1.7.0'
 
+    implementation 'commons-codec:commons-codec:1.14'
     implementation 'com.github.hotchemi:permissionsdispatcher:4.1.0'
 //    annotationProcessor 'com.github.hotchemi:permissionsdispatcher-processor:4.1.0'
 //    implementation 'com.guolindev.permissionx:permissionx:1.7.1'

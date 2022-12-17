@@ -20,6 +20,8 @@ import com.karumi.dexter.listener.multi.MultiplePermissionsListener
 //import com.permissionx.guolindev.PermissionX
 import permissions.dispatcher.*
 
+import android.bluetooth.BluetoothManager
+
 
 import android.os.ParcelUuid
 import android.util.SparseArray
@@ -38,19 +40,18 @@ class MainActivity : AppCompatActivity() {
 
     val permissions = arrayOf(
         Manifest.permission.ACCESS_COARSE_LOCATION,
+        Manifest.permission.ACCESS_FINE_LOCATION,
         Manifest.permission.BLUETOOTH_CONNECT,
         Manifest.permission.BLUETOOTH_SCAN,
-        Manifest.permission.BLUETOOTH_ADVERTISE
+        Manifest.permission.BLUETOOTH_ADVERTISE,
     )
     var askedForPermssions = false
-//    private var bluetoothService: BluetoothService? = null
-//    private var bluetoothService: BluetoothService? = BluetoothService(this,this)
-
-
     class DiscoveredBluetoothDevice(val device: BluetoothDevice, val serviceUuids: List<ParcelUuid>)
 
     val deviceSet = mutableListOf<DiscoveredBluetoothDevice>()
     lateinit var adapter:DeviceAdapter
+
+    private lateinit var bluetoothGattServer: BluetoothGattServer
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,7 +61,7 @@ class MainActivity : AppCompatActivity() {
         val recyclerView = findViewById<RecyclerView>(R.id.recycler_view)
         val layoutManager = LinearLayoutManager(this)
         recyclerView.layoutManager = layoutManager
-        adapter = DeviceAdapter(deviceSet)
+        adapter = DeviceAdapter(this,deviceSet)
         recyclerView.adapter = adapter
 
 
@@ -68,37 +69,15 @@ class MainActivity : AppCompatActivity() {
         var checkButton = findViewById<Button>(R.id.start_button)
         checkButton.setOnClickListener {
             scan()
-
         }
 
         requestPermissions(*permissions)
 
         val startBroadcastingButton = findViewById<Button>(R.id.start_broadcasting_button)
+
         startBroadcastingButton.setOnClickListener {
-            val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
-
-            // Check if Bluetooth is supported on the device
-            if (bluetoothAdapter == null) {
-                Log.e("Bluetooth", "Bluetooth is not supported on this device")
-                return@setOnClickListener
-            }
-
-            // Check if Bluetooth is enabled
-            if (!bluetoothAdapter.isEnabled()) {
-                Log.i("Bluetooth", "Bluetooth is not enabled, enabling now...")
-                bluetoothAdapter.enable()
-            }
-
-//             Get the BluetoothLeAdvertiser
-            val bluetoothLeAdvertiser = bluetoothAdapter.bluetoothLeAdvertiser
-
-            // Check if Bluetooth LE advertising is supported on the device
-            if (bluetoothLeAdvertiser == null) {
-                Log.e("Bluetooth", "Bluetooth LE advertising is not supported on this device")
-                return@setOnClickListener
-            }
-            startBluetoothServiceTry(bluetoothLeAdvertiser)
-
+//            startBluetoothServiceTry()
+            startGattSever()
         }
 
     }
@@ -107,7 +86,7 @@ class MainActivity : AppCompatActivity() {
         val textView: TextView = itemView.findViewById(R.id.text_view)
     }
 
-    class DeviceAdapter(private val devices: MutableList<DiscoveredBluetoothDevice>) : RecyclerView.Adapter<DeviceViewHolder>() {
+    class DeviceAdapter(private val context: Context, private val devices: MutableList<DiscoveredBluetoothDevice>) : RecyclerView.Adapter<DeviceViewHolder>() {
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): DeviceViewHolder {
             val view = LayoutInflater.from(parent.context).inflate(R.layout.item_device, parent, false)
@@ -119,13 +98,45 @@ class MainActivity : AppCompatActivity() {
             holder.textView.text = "${descoveredDevice.device.name ?: descoveredDevice.device.address} -- ${descoveredDevice.serviceUuids}"
             holder.textView.setOnClickListener(){
                 println("Item on click listner")
+                ConnectToBleDevice(descoveredDevice.device)
             }
+        }
+        public fun ConnectToBleDevice(device: BluetoothDevice){
+            val bluetoothGatt = device.connectGatt(context, false, object : BluetoothGattCallback() {
+                override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+                    if (newState == BluetoothProfile.STATE_CONNECTED) {
+                        println("Connect to Device")
+                        gatt.discoverServices()
+                    }
+                }
+
+                override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        val services = gatt.services
+                        for (service in services) {
+                            println("Service UUID: ${service.uuid}")
+                            val characteristics = service.characteristics
+                            for (characteristic in characteristics) {
+                                println("Characteristic UUID: ${characteristic.uuid}")
+                                println("Characteristic data: ${characteristic.value}")
+                                val descriptors = characteristic.descriptors
+                                for (descriptor in descriptors) {
+                                    println("Descriptor UUID: ${descriptor.uuid}")
+                                }
+                            }
+                        }
+                    }
+                }
+
+            })
+
         }
 
         override fun getItemCount(): Int {
             return devices.size
         }
     }
+
 
 
 
@@ -193,8 +204,6 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         println("Device name not available")
                     }
-
-
 
                     // Print the manufacturer data
                     val manufacturerData: SparseArray<ByteArray>? = scanRecord?.getManufacturerSpecificData()
@@ -282,9 +291,117 @@ class MainActivity : AppCompatActivity() {
         startService(serviceIntent)
     }
 
-    
-    private fun startBluetoothServiceTry(bluetoothLeAdvertiser: BluetoothLeAdvertiser){
 
+    private fun startGattSever(){
+
+        val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+
+        // Check if Bluetooth is supported on the device
+        if (bluetoothAdapter == null) {
+            Log.e("Bluetooth", "Bluetooth is not supported on this device")
+            return
+        }
+
+        // Check if Bluetooth is enabled
+        if (!bluetoothAdapter.isEnabled()) {
+            Log.i("Bluetooth", "Bluetooth is not enabled, enabling now...")
+            bluetoothAdapter.enable()
+        }
+
+//             Get the BluetoothLeAdvertiser
+        val bluetoothLeAdvertiser = bluetoothAdapter.bluetoothLeAdvertiser
+
+        // Check if Bluetooth LE advertising is supported on the device
+        if (bluetoothLeAdvertiser == null) {
+            Log.e("Bluetooth", "Bluetooth LE advertising is not supported on this device")
+            return
+        }
+
+        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+
+
+        bluetoothGattServer = bluetoothManager.openGattServer(this,
+        object : BluetoothGattServerCallback() {
+            override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
+                if (newState == BluetoothProfile.STATE_CONNECTED) {
+                    // Device connected, send a characteristic value
+//                    val service = bluetoothGattServer.getService(UUID.fromString("00007609-0000-1000-8000-00805f9b34fb"))
+//                    val characteristic: BluetoothGattCharacteristic = service.getCharacteristic(UUID.fromString("00000000-7770-1000-8000-00805f9b34fb"))
+//                    characteristic.value = "Hello, world!".toByteArray(Charsets.UTF_8)
+//                    bluetoothGattServer.notifyCharacteristicChanged(device, characteristic, false)
+                }
+            }
+            override fun onCharacteristicReadRequest(
+                device: BluetoothDevice,
+                requestId: Int,
+                offset: Int,
+                characteristic: BluetoothGattCharacteristic
+            ) {
+                // Set the value of the characteristic
+                characteristic.value = "BroadCasted Guys !!!".toByteArray(Charsets.UTF_8)
+                println("request recieved from the device $device")
+                // Send the read response
+                bluetoothGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, characteristic.value)
+            }
+        })
+
+
+        // Add the service to the server
+        val service = BluetoothGattService(
+            UUID.fromString("00007609-0000-1000-8000-00805f9b34fb"),
+            BluetoothGattService.SERVICE_TYPE_PRIMARY
+        )
+        val characteristic = BluetoothGattCharacteristic(
+            UUID.fromString("00000000-7770-1000-8000-00805f9b34fb"),
+            BluetoothGattCharacteristic.PROPERTY_BROADCAST or BluetoothGattCharacteristic.PROPERTY_READ,
+            BluetoothGattCharacteristic.PERMISSION_READ
+        )
+        characteristic.value = "BroadCasted Guys !!!".toByteArray(Charsets.UTF_8)
+
+        val descriptorUuid = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+        val descriptor = BluetoothGattDescriptor(descriptorUuid, BluetoothGattDescriptor.PERMISSION_READ)
+        descriptor.value = "My descriptor value".toByteArray(Charsets.UTF_8)
+        characteristic.addDescriptor(descriptor)
+        service.addCharacteristic(characteristic)
+
+// Add the service to the server
+        bluetoothGattServer.addService(service)
+
+        // Start advertising the service
+        val settings = AdvertiseSettings.Builder()
+            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
+            .build()
+        val data = AdvertiseData.Builder()
+            .addServiceUuid(ParcelUuid(service.uuid))
+            .build()
+        val advertiser = bluetoothAdapter.bluetoothLeAdvertiser
+        advertiser.startAdvertising(settings, data, advertiseCallback)
+    }
+
+    private fun startBluetoothServiceTry(){
+
+        val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+
+        // Check if Bluetooth is supported on the device
+        if (bluetoothAdapter == null) {
+            Log.e("Bluetooth", "Bluetooth is not supported on this device")
+            return
+        }
+
+        // Check if Bluetooth is enabled
+        if (!bluetoothAdapter.isEnabled()) {
+            Log.i("Bluetooth", "Bluetooth is not enabled, enabling now...")
+            bluetoothAdapter.enable()
+        }
+
+//             Get the BluetoothLeAdvertiser
+        val bluetoothLeAdvertiser = bluetoothAdapter.bluetoothLeAdvertiser
+
+        // Check if Bluetooth LE advertising is supported on the device
+        if (bluetoothLeAdvertiser == null) {
+            Log.e("Bluetooth", "Bluetooth LE advertising is not supported on this device")
+            return
+        }
 
         // Create a characteristic with some data
         val characteristic = BluetoothGattCharacteristic(
@@ -293,28 +410,12 @@ class MainActivity : AppCompatActivity() {
             BluetoothGattCharacteristic.PERMISSION_READ
         )
 
-// Convert the string to a byte array using UTF-8 encoding
+        // Convert the string to a byte array using UTF-8 encoding
         val data = "Hello, world!".toByteArray(Charsets.UTF_8)
         println("Hello worled "+data)
-// Set the value of the characteristic to the byte array
+
+        // Set the value of the characteristic to the byte array
         characteristic.value = data
-
-// Generate a unique identifier for the characteristic based on its data
-        val hash = UUID.nameUUIDFromBytes(data).hashCode()
-
-// Add the characteristic to a database hash using the generated identifier
-        val database = HashMap<Int, BluetoothGattCharacteristic>()
-        database[hash] = characteristic
-
-        // Create a descriptor with the data
-        val descriptor = BluetoothGattDescriptor(
-            UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"),
-            BluetoothGattDescriptor.PERMISSION_READ
-        )
-        descriptor.value = "Hello, world!".toByteArray(Charsets.UTF_8)
-
-        // Add the descriptor to the characteristic
-        characteristic.addDescriptor(descriptor)
 
         // Create a service that contains the characteristic
         val service = BluetoothGattService(
@@ -326,6 +427,7 @@ class MainActivity : AppCompatActivity() {
         // Create an AdvertiseData object and include the service UUID
         val advertiseData = AdvertiseData.Builder()
             .addServiceUuid(ParcelUuid(service.uuid))
+//            .addServiceData(ParcelUuid(characteristic.uuid), characteristic.value)
             .build()
 
         // Create an AdvertiseSettings object and set the advertising mode

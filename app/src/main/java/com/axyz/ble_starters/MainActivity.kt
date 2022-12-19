@@ -6,7 +6,6 @@ import android.bluetooth.le.*
 import android.content.*
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
 import androidx.appcompat.app.AlertDialog
@@ -21,17 +20,25 @@ import com.karumi.dexter.listener.multi.MultiplePermissionsListener
 import permissions.dispatcher.*
 
 import android.bluetooth.BluetoothManager
+import android.os.*
+
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+
+import kotlinx.serialization.*
+import kotlinx.serialization.json.*
 
 
-import android.os.ParcelUuid
 import android.util.SparseArray
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import androidx.core.content.ContextCompat.startActivity
 import androidx.core.util.isNotEmpty
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import kotlinx.serialization.json.JsonElement
 import java.nio.charset.StandardCharsets
 import java.util.*
 
@@ -46,6 +53,7 @@ class MainActivity : AppCompatActivity() {
         Manifest.permission.BLUETOOTH_ADVERTISE,
     )
     var askedForPermssions = false
+
     class DiscoveredBluetoothDevice(val device: BluetoothDevice, val serviceUuids: List<ParcelUuid>)
 
     val deviceSet = mutableListOf<DiscoveredBluetoothDevice>()
@@ -65,7 +73,6 @@ class MainActivity : AppCompatActivity() {
         recyclerView.adapter = adapter
 
 
-
         var checkButton = findViewById<Button>(R.id.start_button)
         checkButton.setOnClickListener {
             scan()
@@ -76,8 +83,10 @@ class MainActivity : AppCompatActivity() {
         val startBroadcastingButton = findViewById<Button>(R.id.start_broadcasting_button)
 
         startBroadcastingButton.setOnClickListener {
-//            startBluetoothServiceTry()
             startGattSever()
+            // Start the Permission required activity
+//            val intent = Intent(this, DiscoveredDevice::class.java)
+//            startActivity(intent)
         }
 
     }
@@ -106,6 +115,9 @@ class MainActivity : AppCompatActivity() {
                 override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
                     if (newState == BluetoothProfile.STATE_CONNECTED) {
                         println("Connect to Device")
+                        // Start the Permission required activity
+//                        val intent = Intent(context, DiscoveredDevice::class.java)
+//                        context.startActivity(intent)
                         gatt.discoverServices()
                     }
                 }
@@ -113,22 +125,79 @@ class MainActivity : AppCompatActivity() {
                 override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
                     if (status == BluetoothGatt.GATT_SUCCESS) {
                         val services = gatt.services
+
+//                        Was trying to send the data to the newly Created Activity Discovered Device
+//                        but dropped the idea now just implementing the characteristic read
+//                        using code
+
+//                        val intent = Intent(context, DiscoveredDevice::class.java)
+//                        val services: List<BluetoothGattService> = gatt.services
+//                        intent.putExtra("services", services.toTypedArray())
+
+//                        val intent = Intent(this, DiscoveredDevice::class.java)
+//                        val servicesList = ArrayList<Parcelable>(services)
+//                        intent.putParcelableArrayListExtra("services", servicesList)
+//                        context.startActivity(intent)
+//                        intent.putExtra("device", device)
+//                        context.startActivity(intent)
+
+
                         for (service in services) {
                             println("Service UUID: ${service.uuid}")
-                            val characteristics = service.characteristics
-                            for (characteristic in characteristics) {
-                                println("Characteristic UUID: ${characteristic.uuid}")
-                                println("Characteristic data: ${characteristic.value}")
-                                val descriptors = characteristic.descriptors
-                                for (descriptor in descriptors) {
-                                    println("Descriptor UUID: ${descriptor.uuid}")
+                            if(service.uuid.toString().startsWith("f4f5f6f9")){
+                                val characteristicId = UUID.fromString("ff82240a-27c1-4661-a15a-be5a22a17256")
+                                val characteristic = service.getCharacteristic(characteristicId)
+                                // send request to readcharacteristic
+
+//                                if (gatt.readCharacteristic(characteristic)) {
+//                                    // Request was sent successfully
+//                                    println("Request was sent successfully")
+//                                } else {
+//                                    // Request failed
+//                                }
+
+
+
+                                val characteristicData = CharacteristicDataClass(true)
+                                val dataJsonString = Json.encodeToString(characteristicData)
+                                val value=dataJsonString.toByteArray(Charsets.UTF_8)
+                                // write the new value
+                                characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                                characteristic.setValue(value)
+                                // send request to writecharacteristic
+                                if(gatt.writeCharacteristic(characteristic)){
+                                    // Request was sent successfully
+                                    println("Request was sent successfully")
+                                } else {
+                                    // Request failed
                                 }
+
+
                             }
+//
                         }
                     }
                 }
+                override fun onCharacteristicRead(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
+                    super.onCharacteristicRead(gatt, characteristic, status)
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        // Characteristic read successfully
+                        val value = characteristic?.getValue()
+                        val data = value?.let { String(it, Charsets.UTF_8) }
+                        println("Yoo we Read the characteristic -> $data")
+                        val handler = Handler(Looper.getMainLooper())
+                        handler.post {
+                            Toast.makeText(context, "Data -> $data", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        // Characteristic read failed
+                        println("Characteristic read failed")
+                    }
+                }
+
 
             })
+
 
         }
 
@@ -166,7 +235,9 @@ class MainActivity : AppCompatActivity() {
 
         val bluetoothLeScanner = bluetoothAdapter.bluetoothLeScanner
         val scanSettings = ScanSettings.Builder().build()
-        val scanFilter = ScanFilter.Builder().build()
+        val scanFilter = ScanFilter.Builder()
+//            .setServiceUuid(ParcelUuid.fromString("f4f5f6f9-0000-0000-0000-000000000000"))
+            .build()
         // List to store the scan results
         val scanResultList: MutableList<ScanResult> = mutableListOf()
 
@@ -185,17 +256,34 @@ class MainActivity : AppCompatActivity() {
                 if (deviceSet.any { it.device == device }) {
                     // Device is already in the list, do nothing
                 } else {
-                    // Print the service UUIDs
+                            // Print the service UUIDs
 //                val serviceUuids: List<ParcelUuid> = scanRecord?.getServiceUuids() as List<ParcelUuid>
                     val serviceUuids: List<ParcelUuid> = scanRecord?.getServiceUuids() ?: emptyList()
-                    if (serviceUuids.isNotEmpty()) {
-                        println("Service UUIDs: $serviceUuids")
-                    } else {
+                        if (serviceUuids.isNotEmpty()) {
+                            println("Service UUIDs: $serviceUuids")
+                            for(service_uuid in serviceUuids){
+                                if(service_uuid.toString().startsWith("f4f5f6f9")){
+                                    // Device is new, and has our made uuid now add it to the list
+                                    println("Yes this $service_uuid starts with f4f5f6f9")
+//                                    if (deviceSet.any { it.device == device }) {
+                                        deviceSet.add(
+                                            DiscoveredBluetoothDevice(
+                                                device,
+                                                serviceUuids
+                                            )
+                                        )
+                                        println("Device Added ------------> $device")
+//                                    }
+                                }
+                            }
+                        } else {
                         println("No service UUIDs available")
                     }
-                    // Device is new, add it to the list
-                    deviceSet.add(DiscoveredBluetoothDevice(device, serviceUuids))
-                    println("Device Added ------------> $device")
+//                    if(device.uuids != null){
+
+//                    }
+
+
 
 // Print the device name
                     val deviceName: String? = scanRecord?.getDeviceName()
@@ -291,6 +379,10 @@ class MainActivity : AppCompatActivity() {
         startService(serviceIntent)
     }
 
+    @Serializable
+    data class CharacteristicDataClass(val attendence: Boolean)
+
+
 
     private fun startGattSever(){
 
@@ -322,49 +414,119 @@ class MainActivity : AppCompatActivity() {
 
         bluetoothGattServer = bluetoothManager.openGattServer(this,
         object : BluetoothGattServerCallback() {
+
             override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
-                    // Device connected, send a characteristic value
-//                    val service = bluetoothGattServer.getService(UUID.fromString("00007609-0000-1000-8000-00805f9b34fb"))
-//                    val characteristic: BluetoothGattCharacteristic = service.getCharacteristic(UUID.fromString("00000000-7770-1000-8000-00805f9b34fb"))
-//                    characteristic.value = "Hello, world!".toByteArray(Charsets.UTF_8)
-//                    bluetoothGattServer.notifyCharacteristicChanged(device, characteristic, false)
+                    println("Connected to the device - ${device.name?:device.address}")
                 }
             }
+
             override fun onCharacteristicReadRequest(
                 device: BluetoothDevice,
                 requestId: Int,
                 offset: Int,
                 characteristic: BluetoothGattCharacteristic
             ) {
-                // Set the value of the characteristic
-                characteristic.value = "BroadCasted Guys !!!".toByteArray(Charsets.UTF_8)
+
+//                the below code shows the broadcasting device a toast that some device has
+//                requested to read the data and we are allowing them to read
+//                val handler = Handler(Looper.getMainLooper())
+//                handler.post {
+//                    Toast.makeText(this@MainActivity, "Requested to Read Characteristics", Toast.LENGTH_SHORT).show()
+//                }
+//                Toast.makeText(this@MainActivity,"Requested to Read Characteristics",Toast.LENGTH_SHORT).show()
+//                characteristic.value = "BroadCasted Guys !!!".toByteArray(Charsets.UTF_8)
                 println("request recieved from the device $device")
                 // Send the read response
                 bluetoothGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, characteristic.value)
             }
+            override fun onCharacteristicWriteRequest(
+                device: BluetoothDevice,
+                requestId: Int,
+                characteristic: BluetoothGattCharacteristic,
+                preparedWrite: Boolean,
+                responseNeeded: Boolean,
+                offset: Int,
+                value: ByteArray
+            ) {
+                // Your code here
+                // Serializing objects
+//                val characteristicData = CharacteristicDataClass(true)
+//                val dataJsonString = Json.encodeToString(characteristicData)
+//                characteristic.value=dataJsonString.toByteArray(Charsets.UTF_8)
+                characteristic.value=value
+                val handler = Handler(Looper.getMainLooper())
+                handler.post {
+                    Toast.makeText(this@MainActivity, "Characteristics OverWritten with -> $value", Toast.LENGTH_SHORT).show()
+                }
+                // Send the response back to the client
+                if (responseNeeded) {
+                    val status = BluetoothGatt.GATT_SUCCESS
+                    bluetoothGattServer.sendResponse(device, requestId, status, offset, value)
+                }
+            }
+
         })
 
+        // Function to create a prefixed uuid
+        fun createPrefixedUuids(prefix: String): String {
+            val random = Random()
+            val uuid = StringBuilder()
+            uuid.append(prefix)
+            uuid.append('-')
+            for (j in 0 until 4) {
+                val randomChar = Integer.toHexString(random.nextInt(16))
+                uuid.append(randomChar)
+            }
+            uuid.append('-')
+            for (j in 0 until 4) {
+                val randomChar = Integer.toHexString(random.nextInt(16))
+                uuid.append(randomChar)
+            }
+            uuid.append('-')
+            for (j in 0 until 4) {
+                val randomChar = Integer.toHexString(random.nextInt(16))
+                uuid.append(randomChar)
+            }
+            uuid.append('-')
+            for (j in 0 until 12) {
+                val randomChar = Integer.toHexString(random.nextInt(16)).toUpperCase()
+                uuid.append(randomChar)
+            }
+
+            return uuid.toString()
+        }
+
+        val uservice  = UUID.randomUUID().toString().replaceRange(0..7, "f4f5f6f9")
 
         // Add the service to the server
         val service = BluetoothGattService(
-            UUID.fromString("00007609-0000-1000-8000-00805f9b34fb"),
+            UUID.fromString(uservice),
             BluetoothGattService.SERVICE_TYPE_PRIMARY
         )
         val characteristic = BluetoothGattCharacteristic(
-            UUID.fromString("00000000-7770-1000-8000-00805f9b34fb"),
-            BluetoothGattCharacteristic.PROPERTY_BROADCAST or BluetoothGattCharacteristic.PROPERTY_READ,
-            BluetoothGattCharacteristic.PERMISSION_READ
+            UUID.fromString("ff82240a-27c1-4661-a15a-be5a22a17256"),
+            BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE,
+            BluetoothGattCharacteristic.PERMISSION_READ or BluetoothGattCharacteristic.PERMISSION_WRITE
         )
-        characteristic.value = "BroadCasted Guys !!!".toByteArray(Charsets.UTF_8)
 
-        val descriptorUuid = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
-        val descriptor = BluetoothGattDescriptor(descriptorUuid, BluetoothGattDescriptor.PERMISSION_READ)
-        descriptor.value = "My descriptor value".toByteArray(Charsets.UTF_8)
-        characteristic.addDescriptor(descriptor)
+
+        // Serializing objects
+        val characteristicData = CharacteristicDataClass(false)
+        val dataJsonString = Json.encodeToString(characteristicData)
+
+        // decoding part
+//        println(dataJsonString) // {"attendence":false}
+        // Deserializing back into objects
+//        val obj = Json.decodeFromString<CharacteristicDataClass>(dataJsonString)
+//        println(obj) // Project(name=kotlinx.serialization, language=Kotlin)
+
+        // Write data to the characteristic
+        characteristic.value = dataJsonString.toByteArray(Charsets.UTF_8)
+
         service.addCharacteristic(characteristic)
 
-// Add the service to the server
+        // Add the service to the server
         bluetoothGattServer.addService(service)
 
         // Start advertising the service
@@ -405,9 +567,9 @@ class MainActivity : AppCompatActivity() {
 
         // Create a characteristic with some data
         val characteristic = BluetoothGattCharacteristic(
-            UUID.fromString("00000000-7770-1000-8000-00805f9b34fb"),
-            BluetoothGattCharacteristic.PROPERTY_READ,
-            BluetoothGattCharacteristic.PERMISSION_READ
+            UUID.fromString("ff82240a-27c1-4661-a15a-be5a22a17256"),
+            BluetoothGattCharacteristic.PROPERTY_READ and BluetoothGattCharacteristic.PROPERTY_READ,
+            BluetoothGattCharacteristic.PERMISSION_READ and BluetoothGattCharacteristic.PERMISSION_WRITE
         )
 
         // Convert the string to a byte array using UTF-8 encoding
@@ -501,15 +663,11 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setMessage(message)
             .setNegativeButton("Cancel") { _, _ ->
-
                 Toast.makeText(this@MainActivity,"Forward to Screen saying permissions are required",Toast.LENGTH_SHORT).show()
                 // Create an Intent to start the Permission Required activity
                 val intent = Intent(this, PermissionRequired::class.java)
-
                 // Start the Permission required activity
                 startActivity(intent)
-
-
             }
             .setPositiveButton("Go to Settings") { _, _ ->
                 val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
@@ -540,12 +698,6 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         Log.d("PAUSE","On Pause Called")
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        // Unbind the BluetoothService from the Activity
-//        unbindService(serviceConnection)
     }
 }
 

@@ -39,6 +39,8 @@
         </activity>
         <activity android:name=".PermissionRequired">
         </activity>
+        <activity android:name=".DiscoveredDevice">
+        </activity>
         <service android:name=".HelloService">
         </service>
     </application>
